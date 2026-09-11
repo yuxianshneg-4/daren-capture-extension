@@ -32,7 +32,7 @@
   // ---------- Shadow DOM 面板 ----------
   const host = document.createElement('div');
   host.id = '__talent-helper-host';
-  host.style.cssText = 'position:fixed;top:80px;right:0;z-index:2147483647;';
+  host.style.cssText = 'position:fixed;z-index:2147483646;'; // 2147483647 留给达人筛选助手
   const shadow = host.attachShadow({ mode: 'open' });
   document.documentElement.appendChild(host);
 
@@ -42,7 +42,11 @@
         background: #fff; border-radius: 12px 0 0 12px; box-shadow: 0 6px 24px rgba(0,0,0,.15);
         font-family: "Microsoft YaHei", sans-serif; font-size: 13px; color: #1f2329;
         transition: transform .25s; }
-      .wrap.collapsed { transform: translateX(286px); }
+      .wrap.collapsed { width: 34px !important; max-height: none; overflow: hidden; }
+      .wrap.collapsed .cnt, .wrap.collapsed .summary, .wrap.collapsed .bar, .wrap.collapsed .dbg { display: none; }
+      .wrap.collapsed .hd { border-radius: 6px; justify-content: center; padding: 10px 6px; }
+      .wrap.collapsed .hd b { display: none; }
+      .wrap.collapsed #collapse { writing-mode: vertical-rl; font-size: 11px; transform: rotate(180deg); }
       .hd { display:flex; align-items:center; justify-content:space-between; padding:10px 12px;
         background:#3370ff; color:#fff; border-radius:12px 0 0 0; cursor:pointer; user-select:none; }
       .hd b { font-size: 13px; }
@@ -88,6 +92,9 @@
     <div class="toast" id="toast"></div>
     <div id="modalSlot"></div>
   `;
+
+  // 初始化拖拽 + 位置恢复 + 四边缩边
+  attachDraggable(host, shadow, 'daren-grab', { defaultSide: 'right', defaultTop: 80, zOpen: 2147483646, zDrag: 2147483648 });
 
   const $ = (sel) => shadow.querySelector(sel);
 
@@ -284,13 +291,110 @@
     toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
   }
 
+  // ---------- 通用：拖拽 + 位置持久化 + 四边缩边 ----------
+  function attachDraggable(host, shadow, storageKey, opts) {
+    opts = opts || {};
+    const STORAGE_KEY = '__panel_pos_' + storageKey;
+    const DEFAULT_SIDE = opts.defaultSide || 'right';
+    const DEFAULT_TOP = opts.defaultTop != null ? opts.defaultTop : 80;
+    const Z_OPEN = opts.zOpen || 2147483647;
+    const Z_DRAG = opts.zDrag || 2147483648;
+    const EDGE_THRESHOLD = 10;
+
+    const hd = shadow.querySelector('.hd');
+    const wrap = shadow.querySelector('.wrap');
+
+    function applyPosition(pos) {
+      ['left', 'top', 'right', 'bottom'].forEach((k) => host.style[k] = '');
+      if (pos && typeof pos.left === 'number') host.style.left = pos.left + 'px';
+      if (pos && typeof pos.top === 'number') host.style.top = pos.top + 'px';
+      if (pos && typeof pos.right === 'number') host.style.right = pos.right + 'px';
+      if (pos && typeof pos.bottom === 'number') host.style.bottom = pos.bottom + 'px';
+    }
+    function defaultPosition() {
+      const pos = { top: DEFAULT_TOP };
+      if (DEFAULT_SIDE === 'right') pos.right = 0; else pos.left = 0;
+      return pos;
+    }
+    function savePosition(collapsed) {
+      const rect = host.getBoundingClientRect();
+      const pos = {
+        left: Math.max(0, Math.round(rect.left)),
+        top: Math.max(0, Math.round(rect.top)),
+        right: Math.max(0, Math.round(window.innerWidth - rect.right)),
+        bottom: Math.max(0, Math.round(window.innerHeight - rect.bottom)),
+      };
+      if (collapsed) pos.collapsed = true;
+      try { chrome.storage.local.set({ [STORAGE_KEY]: pos }); } catch (e) {}
+    }
+
+    // 恢复位置
+    try {
+      chrome.storage.local.get([STORAGE_KEY], (res) => {
+        const saved = res && res[STORAGE_KEY];
+        if (saved && (saved.left != null || saved.right != null)) {
+          applyPosition(saved);
+          if (saved.collapsed) wrap.classList.add('collapsed');
+        } else {
+          applyPosition(defaultPosition());
+        }
+      });
+    } catch (e) { applyPosition(defaultPosition()); }
+
+    let dragging = false;
+    let startX, startY, startLeft, startTop;
+    let moved = false;
+
+    hd.addEventListener('mousedown', (e) => {
+      if (wrap.classList.contains('collapsed')) return;
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      dragging = true; moved = false;
+      host.style.zIndex = Z_DRAG;
+      const rect = host.getBoundingClientRect();
+      startX = e.clientX; startY = e.clientY;
+      startLeft = rect.left; startTop = rect.top;
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - startX, dy = e.clientY - startY;
+      if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+      host.style.left = Math.max(0, startLeft + dx) + 'px';
+      host.style.top = Math.max(0, startTop + dy) + 'px';
+      host.style.right = ''; host.style.bottom = '';
+    });
+    document.addEventListener('mouseup', (e) => {
+      if (!dragging) return;
+      dragging = false; host.style.zIndex = Z_OPEN;
+      if (!moved) {
+        const isCollapsed = wrap.classList.toggle('collapsed');
+        if (isCollapsed) {
+          const rect = host.getBoundingClientRect();
+          const vw = window.innerWidth;
+          if (rect.left < vw - rect.right) { host.style.left = '0px'; host.style.right = ''; }
+          else { host.style.left = ''; host.style.right = '0px'; }
+        }
+        savePosition(isCollapsed);
+        return;
+      }
+      const rect = host.getBoundingClientRect();
+      const vw = window.innerWidth, vh = window.innerHeight;
+      if (rect.left <= EDGE_THRESHOLD) { host.style.left = '0px'; host.style.right = ''; }
+      if ((vw - rect.right) <= EDGE_THRESHOLD) { host.style.left = ''; host.style.right = '0px'; }
+      if (rect.top <= EDGE_THRESHOLD) host.style.top = '0px';
+      if (rect.bottom > vh) host.style.top = Math.max(0, vh - rect.height - 4) + 'px';
+      savePosition(false);
+    });
+    window.addEventListener('resize', () => {
+      const rect = host.getBoundingClientRect();
+      const vw = window.innerWidth, vh = window.innerHeight;
+      if (rect.right > vw) { host.style.left = Math.max(0, vw - rect.width - 4) + 'px'; host.style.right = ''; }
+      if (rect.bottom > vh) { host.style.top = Math.max(0, vh - rect.height - 4) + 'px'; }
+    });
+  }
+
   // ---------- 事件 ----------
-  $('#toggle').addEventListener('click', (e) => {
-    if (e.target.id === 'rescan') return;
-    const w = $('#wrap');
-    w.classList.toggle('collapsed');
-    $('#collapse').textContent = w.classList.contains('collapsed') ? '▶' : '◀';
-  });
+  // toggle/拖拽已由 attachDraggable 统一接管（mouseup 时 delta<5 即 toggle）
   $('#rescan').addEventListener('click', () => {
     runScan();
   });

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "达人信息抓取录入助手",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "在抖音精选联盟达人详情页自动识别达人数据，一键录入飞书多维表格",
   "permissions": ["storage", "tabs", "scripting"],
   "host_permissions": [
