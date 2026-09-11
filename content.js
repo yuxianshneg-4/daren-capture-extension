@@ -15,7 +15,6 @@
     { key: '商品数', label: '商品数', type: 'number' },
     { key: '店铺数', label: '店铺数', type: 'number' },
     { key: '一级类目', label: '一级类目', type: 'chips' },
-    { key: '主推产品', label: '主推产品', type: 'chips' },
     { key: '账号ID', label: '抖音号', type: 'text' },
     { key: '微信号', label: '微信号', type: 'text' },
     { key: '主页链接', label: '主页链接', type: 'text' },
@@ -39,16 +38,16 @@
   shadow.innerHTML = `
     <style>
       .wrap { width: 300px; max-height: 82vh; display: flex; flex-direction: column;
-        background: #fff; border-radius: 12px 0 0 12px; box-shadow: 0 6px 24px rgba(0,0,0,.15);
+        background: #fff; border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.15);
         font-family: "Microsoft YaHei", sans-serif; font-size: 13px; color: #1f2329;
-        transition: transform .25s; }
-      .wrap.collapsed { width: 34px !important; max-height: none; overflow: hidden; }
+        transition: transform .25s; overflow: hidden; }
+      .wrap.collapsed { width: 34px !important; max-height: none; overflow: hidden; border-radius: 8px; }
       .wrap.collapsed .cnt, .wrap.collapsed .summary, .wrap.collapsed .bar, .wrap.collapsed .dbg { display: none; }
       .wrap.collapsed .hd { border-radius: 6px; justify-content: center; padding: 10px 6px; }
       .wrap.collapsed .hd b { display: none; }
       .wrap.collapsed #collapse { writing-mode: vertical-rl; font-size: 11px; transform: rotate(180deg); }
       .hd { display:flex; align-items:center; justify-content:space-between; padding:10px 12px;
-        background:#3370ff; color:#fff; border-radius:12px 0 0 0; cursor:pointer; user-select:none; }
+        background:#3370ff; color:#fff; cursor:pointer; user-select:none; }
       .hd b { font-size: 13px; }
       .cnt { flex:1; overflow-y:auto; padding:10px 12px; }
       .row { margin-bottom: 8px; }
@@ -111,7 +110,7 @@
   // 自动识别结果合并：手动改过的不动；抓到新值就更新；
   // 抓不到时，页面专属字段（只在某个标签页出现）保留旧值，头部常显字段清空防残留
   const KEEP_ON_MISSING = new Set([
-    '月GMV', '平均单价', '商品数', '店铺数', '一级类目', '主推产品',
+    '月GMV', '平均单价', '商品数', '店铺数', '一级类目',
     '账号ID', '微信号', '主页链接', '账号详细'
   ]);
   function mergeScraped(values) {
@@ -346,7 +345,6 @@
     let moved = false;
 
     hd.addEventListener('mousedown', (e) => {
-      if (wrap.classList.contains('collapsed')) return;
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
       dragging = true; moved = false;
       host.style.zIndex = Z_DRAG;

@@ -233,7 +233,6 @@
       店铺数: shopCount ? parseInt(shopCount, 10) : null,
       平均单价: avgPriceRaw ? parseFloat(avgPriceRaw.replace(/[¥\s]/g, '')) : null,
       一级类目: scrapeCategories(getOptions('一级类目')),
-      主推产品: topCategories().filter((n) => getOptions('主推产品').includes(n)),
       账号ID: scrapeAccountId(),
       主页链接: scrapeProfileUrl(),
       账号详细: scrapeByRegex(/达人简介\s*[:：]?\s*([^\n]+)/),
