@@ -11,7 +11,7 @@
     { key: '省份', label: '省份', type: 'select' },
     { key: '达人等级', label: '达人等级', type: 'select' },
     { key: '月GMV', label: '月GMV', type: 'select' },
-    { key: '平均单价', label: '平均单价(元)', type: 'number' },
+    { key: '平均单价', label: '平均单价(元)', type: 'text' },
     { key: '商品数', label: '商品数', type: 'number' },
     { key: '店铺数', label: '店铺数', type: 'number' },
     { key: '一级类目', label: '一级类目', type: 'chips' },

@@ -55,7 +55,7 @@
       const w = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
       let n;
       while ((n = w.nextNode())) {
-        const m = (n.textContent || '').trim().match(/^LV\s*([1-5])$/i);
+        const m = (n.textContent || '').match(/LV\s*([1-5])/i);
         if (m) { lm = m; break; }
       }
       if (lm) break;
@@ -167,9 +167,9 @@
     return raw;
   }
 
-  // 抖音号：点开二维码弹窗后页面会出现“抖音号: 39692728044”（冒号可有可无）
+  // 抖音号：二维码弹窗里“抖音号: M641081598”（支持字母开头、下划线、短横）
   function scrapeAccountId() {
-    return scrapeByRegex(/抖音号\s*[:：]?\s*(\d{5,20})/);
+    return scrapeByRegex(/抖音号\s*[:：]?\s*([A-Za-z0-9_\-]{4,20})/);
   }
 
   function categoryCardText() {
@@ -231,7 +231,7 @@
       月GMV: gmv,
       商品数: goodsCount ? parseInt(goodsCount, 10) : null,
       店铺数: shopCount ? parseInt(shopCount, 10) : null,
-      平均单价: avgPriceRaw ? parseFloat(avgPriceRaw.replace(/[¥\s]/g, '')) : null,
+      平均单价: avgPriceRaw ? avgPriceRaw.replace(/[¥\s]/g, '') : null,
       一级类目: scrapeCategories(getOptions('一级类目')),
       账号ID: scrapeAccountId(),
       主页链接: scrapeProfileUrl(),

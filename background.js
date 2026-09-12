@@ -57,12 +57,65 @@ async function feishu(path, { method = 'GET', body } = {}) {
   return data.data;
 }
 
-function sanitizeFields(input) {
-  const out = {};
-  for (const key of ALLOWED_FIELDS) {
-    if (input[key] !== undefined && input[key] !== null && input[key] !== '') {
-      out[key] = input[key];
+// 字段类型缓存（5 分钟）：写入前按列类型规整值，防止 1254060 TextFieldConvFail（文本列收到数字/数组）
+let typesCache = { types: null, expireAt: 0 };
+async function getFieldTypes() {
+  if (typesCache.types && typesCache.expireAt > Date.now()) return typesCache.types;
+  const data = await feishu('/open-apis/bitable/v1/apps/{base}/tables/{table}/fields?page_size=100');
+  const types = {};
+  for (const f of (data.items || [])) types[f.field_name] = f.type;
+  typesCache = { types, expireAt: Date.now() + 300000 };
+  return types;
+}
+
+// 不可写入的列类型：查找引用/公式/创建时间/最后更新时间/创建人/修改人/自动编号
+const UNWRITABLE_TYPES = new Set([19, 20, 1001, 1002, 1003, 1004, 1005]);
+
+// 按飞书列类型把值规整成合法格式；返回 undefined 表示跳过不写
+function coerceValue(type, key, v) {
+  if (v === undefined || v === null || v === '') return undefined;
+  if (UNWRITABLE_TYPES.has(type)) return undefined;
+  switch (type) {
+    case 2: { // 数字列
+      const cleaned = String(v).replace(/[^\d.\-]/g, '');
+      const n = Number(cleaned);
+      return cleaned && Number.isFinite(n) ? n : undefined;
     }
+    case 5: { // 日期列：毫秒时间戳
+      if (typeof v === 'number') return v;
+      const t = Date.parse(String(v));
+      return Number.isNaN(t) ? undefined : t;
+    }
+    case 3: // 单选列：取字符串（数组取第一个）
+      return Array.isArray(v) ? String(v[0] || '') : String(v);
+    case 4: // 多选列：字符串数组
+      return (Array.isArray(v) ? v : [v]).map((x) => String(x));
+    case 1: // 文本列：一律转字符串
+    default: {
+      if (Array.isArray(v)) return v.map((x) => String(x)).join('、');
+      if (typeof v === 'number' && /日期/.test(key)) {
+        // 建联日期等日期含义的文本列：时间戳格式化成人看的日期
+        const d = new Date(v);
+        const p = (x) => String(x).padStart(2, '0');
+        return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())}`;
+      }
+      return String(v);
+    }
+  }
+}
+
+async function sanitizeFields(input) {
+  const out = {};
+  let types = {};
+  try {
+    types = await getFieldTypes();
+  } catch (e) { /* 拉不到列类型时按原值写入，行为与旧版一致 */ }
+  for (const key of ALLOWED_FIELDS) {
+    const v = input[key];
+    if (v === undefined || v === null || v === '') continue;
+    const type = types[key];
+    const coerced = type ? coerceValue(type, key, v) : v;
+    if (coerced !== undefined && coerced !== '') out[key] = coerced;
   }
   return out;
 }
@@ -104,7 +157,7 @@ async function talent(payload) {
   }
 
   if (action === 'create') {
-    const fields = sanitizeFields(payload.fields || {});
+    const fields = await sanitizeFields(payload.fields || {});
     if (!fields['达人昵称']) throw new Error('达人昵称为空');
     const data = await feishu('/open-apis/bitable/v1/apps/{base}/tables/{table}/records', {
       method: 'POST',
@@ -115,7 +168,7 @@ async function talent(payload) {
 
   if (action === 'update') {
     if (!payload.recordId) throw new Error('缺少 recordId');
-    const fields = sanitizeFields(payload.fields || {});
+    const fields = await sanitizeFields(payload.fields || {});
     await feishu(`/open-apis/bitable/v1/apps/{base}/tables/{table}/records/${payload.recordId}`, {
       method: 'PUT',
       body: { fields }
