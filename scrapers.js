@@ -91,6 +91,25 @@
       }
     }
     console.log('[达人抓取] 含LV的文本节点:', lvNodes.slice(0, 20));
+    // 调试：列出所有 img 元素的属性，找等级徽章图片的线索
+    const imgs = [];
+    for (const doc of getDocs()) {
+      doc.querySelectorAll('img').forEach((img) => {
+        const info = {
+          src: (img.src || '').slice(0, 120),
+          alt: img.alt || '',
+          cls: img.className || '',
+          title: img.title || '',
+          aria: img.getAttribute('aria-label') || '',
+          dataAttrs: {}
+        };
+        for (const attr of img.attributes) {
+          if (attr.name.startsWith('data-')) info.dataAttrs[attr.name] = attr.value;
+        }
+        imgs.push(info);
+      });
+    }
+    console.log('[达人抓取] 所有img元素:', imgs);
 
     // 省份：粉丝数后面跟的地区文字（如“河南·商丘”），按表格选项匹配
     const rm = bt.match(/粉丝\s*([^\s]{2,12})/);
