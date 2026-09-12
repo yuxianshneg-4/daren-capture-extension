@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>达人录入助手 - 配置</title>
+  <style>
+    body { font-family: "Microsoft YaHei", sans-serif; padding: 24px; width: 480px; color: #1f2329; }
+    h2 { margin: 0 0 16px; font-size: 18px; }
+    label { display: block; margin: 14px 0 4px; font-size: 13px; color: #646a73; }
+    input { width: 100%; padding: 8px 10px; border: 1px solid #d0d3d6; border-radius: 6px; font-size: 13px; box-sizing: border-box; }
+    button { margin-top: 20px; padding: 8px 22px; background: #3370ff; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+    button:hover { background: #245bdb; }
+    #status { margin-left: 12px; font-size: 13px; }
+    .tip { margin-top: 18px; font-size: 12px; color: #8f959e; line-height: 1.7; background: #f5f6f7; padding: 10px 12px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <h2>达人录入助手 · 飞书配置</h2>
+
+  <label>App ID（飞书开放平台「凭证与基础信息」页复制，cli_ 开头）</label>
+  <input id="appId" placeholder="cli_xxxxxxxxxxxx">
+
+  <label>App Secret（同页复制，注意保密）</label>
+  <input id="appSecret" type="password" placeholder="粘贴后不会显示明文">
+
+  <label>多维表格 Base Token（表格链接 /base/ 后面那串，已预填）</label>
+  <input id="baseToken">
+
+  <label>数据表 Table ID（表格链接 table= 后面那串，已预填）</label>
+  <input id="tableId">
+
+  <button id="save">保存并测试连接</button>
+  <span id="status"></span>
+
+  <div class="tip">
+    1. 直连飞书官方接口（open.feishu.cn 在国内直连畅通，无需 VPN）。<br>
+    2. 凭证只保存在你本机浏览器里，请勿把填好凭证的配置截图外发。<br>
+    3. 保存后打开精选联盟达人详情页，页面右侧会出现录入面板。
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
