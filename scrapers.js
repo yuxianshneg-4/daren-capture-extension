@@ -77,39 +77,32 @@
       }
     }
     if (lm) result.level = 'Lv' + lm[1];
-    // 调试：输出页面开头文本，排查 LV 的实际存在形式
     console.log('[达人抓取] 等级识别结果:', result.level, '| 原始匹配:', lm ? lm[0] : '未匹配到');
-    console.log('[达人抓取] bodyText前300字:', bt.slice(0, 300));
-    // 列出所有包含 LV 或 Lv 的文本节点，看实际格式
-    const lvNodes = [];
-    for (const doc of getDocs()) {
-      const w = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null);
-      let n;
-      while ((n = w.nextNode())) {
-        const t = (n.textContent || '').trim();
-        if (/lv/i.test(t)) lvNodes.push(JSON.stringify(t).slice(0, 80));
+    // 调试：找头部区域（含"粉丝"的容器）里的小尺寸 img，等级徽章通常很小
+    const headerImgs = [];
+    const fansEl = findTextNode(/粉丝/);
+    if (fansEl) {
+      let box = fansEl.parentElement;
+      for (let i = 0; i < 6 && box; i++) {
+        box.querySelectorAll('img').forEach((img) => {
+          const r = img.getBoundingClientRect();
+          if (r.width > 0 && r.width < 80 && r.height > 0 && r.height < 80) {
+            headerImgs.push({
+              w: Math.round(r.width), h: Math.round(r.height),
+              src: (img.src || '').slice(0, 150),
+              alt: img.alt || '',
+              cls: (img.className || '').slice(0, 80),
+              title: img.title || '',
+              aria: img.getAttribute('aria-label') || '',
+              dataAttrs: (() => { const d = {}; for (const a of img.attributes) if (a.name.startsWith('data-')) d[a.name] = a.value; return d; })()
+            });
+          }
+        });
+        if (headerImgs.length) break;
+        box = box.parentElement;
       }
     }
-    console.log('[达人抓取] 含LV的文本节点:', lvNodes.slice(0, 20));
-    // 调试：列出所有 img 元素的属性，找等级徽章图片的线索
-    const imgs = [];
-    for (const doc of getDocs()) {
-      doc.querySelectorAll('img').forEach((img) => {
-        const info = {
-          src: (img.src || '').slice(0, 120),
-          alt: img.alt || '',
-          cls: img.className || '',
-          title: img.title || '',
-          aria: img.getAttribute('aria-label') || '',
-          dataAttrs: {}
-        };
-        for (const attr of img.attributes) {
-          if (attr.name.startsWith('data-')) info.dataAttrs[attr.name] = attr.value;
-        }
-        imgs.push(info);
-      });
-    }
-    console.log('[达人抓取] 所有img元素:', imgs);
+    console.log('[达人抓取] 头部小尺寸img:', headerImgs);
 
     // 省份：粉丝数后面跟的地区文字（如“河南·商丘”），按表格选项匹配
     const rm = bt.match(/粉丝\s*([^\s]{2,12})/);
