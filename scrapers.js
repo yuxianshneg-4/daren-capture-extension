@@ -77,7 +77,20 @@
       }
     }
     if (lm) result.level = 'Lv' + lm[1];
+    // 调试：输出页面开头文本，排查 LV 的实际存在形式
     console.log('[达人抓取] 等级识别结果:', result.level, '| 原始匹配:', lm ? lm[0] : '未匹配到');
+    console.log('[达人抓取] bodyText前300字:', bt.slice(0, 300));
+    // 列出所有包含 LV 或 Lv 的文本节点，看实际格式
+    const lvNodes = [];
+    for (const doc of getDocs()) {
+      const w = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null);
+      let n;
+      while ((n = w.nextNode())) {
+        const t = (n.textContent || '').trim();
+        if (/lv/i.test(t)) lvNodes.push(JSON.stringify(t).slice(0, 80));
+      }
+    }
+    console.log('[达人抓取] 含LV的文本节点:', lvNodes.slice(0, 20));
 
     // 省份：粉丝数后面跟的地区文字（如“河南·商丘”），按表格选项匹配
     const rm = bt.match(/粉丝\s*([^\s]{2,12})/);
