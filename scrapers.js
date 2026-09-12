@@ -102,7 +102,7 @@
         box = box.parentElement;
       }
     }
-    console.log('[达人抓取] 头部小尺寸img:', headerImgs);
+    console.log('[达人抓取] 头部小尺寸img:', JSON.stringify(headerImgs));
 
     // 省份：粉丝数后面跟的地区文字（如“河南·商丘”），按表格选项匹配
     const rm = bt.match(/粉丝\s*([^\s]{2,12})/);
