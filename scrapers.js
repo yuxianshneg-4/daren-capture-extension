@@ -47,53 +47,37 @@
       if (cand && !cand.includes('粉丝') && !/^\d+(\.\d+)?$/.test(cand)) result.name = cand;
     }
 
-    // 等级：优先在"粉丝数"所在的头部卡片容器内找 LV 徽章，避免被页面别处的 LV 说明文字干扰
+    // 等级识别：昵称、LV徽章、粉丝数在同一行（如"毛球球 LV5 1.2万粉丝 河南南阳"）
+    // 策略：匹配"LVX 后面紧邻粉丝数"，避免抓到页面别处的 LV 说明文字
     let lm = null;
-    const fansNode = (() => {
-      for (const doc of getDocs()) {
-        const w = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null);
-        let n;
-        while ((n = w.nextNode())) {
-          if (/粉丝/.test(n.textContent || '')) return n;
-        }
-      }
-      return null;
-    })();
-    if (fansNode) {
-      // 从粉丝节点往上扩到头部卡片（最多 8 层），在这个范围内找 LV
-      let box = fansNode.parentElement;
-      for (let i = 0; i < 8 && box; i++) {
-        const text = (box.innerText || '').replace(/\s+/g, '');
-        const m = text.match(/LV\s*([1-5])/i);
-        if (m) { lm = m; break; }
-        box = box.parentElement;
-      }
-    }
-    // 兜底：全文本节点精确匹配 LV1-LV5（整段就是等级徽章文本）
+    // 方案1：全文匹配 LVX + 粉丝数（中间允许少量字符）
+    lm = bt.match(/LV\s*([1-6]).{0,30}?[\d.]+\s*万?\s*粉丝/i);
+    // 方案2：兜底——找独立的 LVX 文本节点（整段就是等级徽章，前后只有空白）
     if (!lm) {
       for (const doc of getDocs()) {
         const w = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null);
         let n;
         while ((n = w.nextNode())) {
           const t = (n.textContent || '').trim();
-          const m = t.match(/^LV\s*([1-5])$/i);
+          const m = t.match(/^LV\s*([1-6])$/i);
           if (m) { lm = m; break; }
         }
         if (lm) break;
       }
     }
-    // 最后兜底：alt/title/aria-label
+    // 方案3：最后兜底——alt/title/aria-label 属性
     if (!lm) {
       for (const doc of getDocs()) {
         for (const el of doc.querySelectorAll('[alt],[title],[aria-label]')) {
           const s = (el.getAttribute('alt') || '') + ' ' + (el.getAttribute('title') || '') + ' ' + (el.getAttribute('aria-label') || '');
-          const m = s.match(/LV\s*([1-5])/i);
+          const m = s.match(/LV\s*([1-6])/i);
           if (m) { lm = m; break; }
         }
         if (lm) break;
       }
     }
     if (lm) result.level = 'Lv' + lm[1];
+    console.log('[达人抓取] 等级识别结果:', result.level, '| 原始匹配:', lm ? lm[0] : '未匹配到');
 
     // 省份：粉丝数后面跟的地区文字（如“河南·商丘”），按表格选项匹配
     const rm = bt.match(/粉丝\s*([^\s]{2,12})/);
