@@ -47,19 +47,42 @@
       if (cand && !cand.includes('粉丝') && !/^\d+(\.\d+)?$/.test(cand)) result.name = cand;
     }
 
-    // 等级：独立徽章文本（如“LV1”）→ 任意元素的 alt/title/aria-label → 正文
+    // 等级：优先在"粉丝数"所在的头部卡片容器内找 LV 徽章，避免被页面别处的 LV 说明文字干扰
     let lm = null;
-    for (const doc of getDocs()) {
-      const root = doc.body || doc.documentElement;
-      if (!root) continue;
-      const w = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
-      let n;
-      while ((n = w.nextNode())) {
-        const m = (n.textContent || '').match(/LV\s*([1-5])/i);
-        if (m) { lm = m; break; }
+    const fansNode = (() => {
+      for (const doc of getDocs()) {
+        const w = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null);
+        let n;
+        while ((n = w.nextNode())) {
+          if (/粉丝/.test(n.textContent || '')) return n;
+        }
       }
-      if (lm) break;
+      return null;
+    })();
+    if (fansNode) {
+      // 从粉丝节点往上扩到头部卡片（最多 8 层），在这个范围内找 LV
+      let box = fansNode.parentElement;
+      for (let i = 0; i < 8 && box; i++) {
+        const text = (box.innerText || '').replace(/\s+/g, '');
+        const m = text.match(/LV\s*([1-5])/i);
+        if (m) { lm = m; break; }
+        box = box.parentElement;
+      }
     }
+    // 兜底：全文本节点精确匹配 LV1-LV5（整段就是等级徽章文本）
+    if (!lm) {
+      for (const doc of getDocs()) {
+        const w = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null);
+        let n;
+        while ((n = w.nextNode())) {
+          const t = (n.textContent || '').trim();
+          const m = t.match(/^LV\s*([1-5])$/i);
+          if (m) { lm = m; break; }
+        }
+        if (lm) break;
+      }
+    }
+    // 最后兜底：alt/title/aria-label
     if (!lm) {
       for (const doc of getDocs()) {
         for (const el of doc.querySelectorAll('[alt],[title],[aria-label]')) {
@@ -70,7 +93,6 @@
         if (lm) break;
       }
     }
-    if (!lm) lm = bt.match(/LV\s*([1-5])/i);
     if (lm) result.level = 'Lv' + lm[1];
 
     // 省份：粉丝数后面跟的地区文字（如“河南·商丘”），按表格选项匹配
