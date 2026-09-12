@@ -47,12 +47,19 @@
       if (cand && !cand.includes('粉丝') && !/^\d+(\.\d+)?$/.test(cand)) result.name = cand;
     }
 
-    // 等级识别：昵称、LV徽章、粉丝数在同一行（如"毛球球 LV5 1.2万粉丝 河南南阳"）
-    // 策略：匹配"LVX 后面紧邻粉丝数"，避免抓到页面别处的 LV 说明文字
+    // 等级识别：等级徽章是图片，等级值在 img 的 data-author-level 属性里
     let lm = null;
-    // 方案1：全文匹配 LVX + 粉丝数（中间允许少量字符）
-    lm = bt.match(/LV\s*([1-6]).{0,30}?[\d.]+\s*万?\s*粉丝/i);
-    // 方案2：兜底——找独立的 LVX 文本节点（整段就是等级徽章，前后只有空白）
+    // 方案1：找带 data-author-level 属性的 img（最可靠）
+    for (const doc of getDocs()) {
+      const img = doc.querySelector('img[data-author-level]');
+      if (img) {
+        const lv = img.getAttribute('data-author-level');
+        if (/^[1-6]$/.test(lv)) { lm = [null, lv]; break; }
+      }
+    }
+    // 方案2：兜底——全文匹配 LVX + 粉丝数（防止页面改版）
+    if (!lm) lm = bt.match(/LV\s*([1-6]).{0,30}?[\d.]+\s*万?\s*粉丝/i);
+    // 方案3：兜底——独立 LVX 文本节点
     if (!lm) {
       for (const doc of getDocs()) {
         const w = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null);
@@ -65,44 +72,7 @@
         if (lm) break;
       }
     }
-    // 方案3：最后兜底——alt/title/aria-label 属性
-    if (!lm) {
-      for (const doc of getDocs()) {
-        for (const el of doc.querySelectorAll('[alt],[title],[aria-label]')) {
-          const s = (el.getAttribute('alt') || '') + ' ' + (el.getAttribute('title') || '') + ' ' + (el.getAttribute('aria-label') || '');
-          const m = s.match(/LV\s*([1-6])/i);
-          if (m) { lm = m; break; }
-        }
-        if (lm) break;
-      }
-    }
     if (lm) result.level = 'Lv' + lm[1];
-    console.log('[达人抓取] 等级识别结果:', result.level, '| 原始匹配:', lm ? lm[0] : '未匹配到');
-    // 调试：找头部区域（含"粉丝"的容器）里的小尺寸 img，等级徽章通常很小
-    const headerImgs = [];
-    const fansEl = findTextNode(/粉丝/);
-    if (fansEl) {
-      let box = fansEl.parentElement;
-      for (let i = 0; i < 6 && box; i++) {
-        box.querySelectorAll('img').forEach((img) => {
-          const r = img.getBoundingClientRect();
-          if (r.width > 0 && r.width < 80 && r.height > 0 && r.height < 80) {
-            headerImgs.push({
-              w: Math.round(r.width), h: Math.round(r.height),
-              src: (img.src || '').slice(0, 150),
-              alt: img.alt || '',
-              cls: (img.className || '').slice(0, 80),
-              title: img.title || '',
-              aria: img.getAttribute('aria-label') || '',
-              dataAttrs: (() => { const d = {}; for (const a of img.attributes) if (a.name.startsWith('data-')) d[a.name] = a.value; return d; })()
-            });
-          }
-        });
-        if (headerImgs.length) break;
-        box = box.parentElement;
-      }
-    }
-    console.log('[达人抓取] 头部小尺寸img:', JSON.stringify(headerImgs));
 
     // 省份：粉丝数后面跟的地区文字（如“河南·商丘”），按表格选项匹配
     const rm = bt.match(/粉丝\s*([^\s]{2,12})/);
