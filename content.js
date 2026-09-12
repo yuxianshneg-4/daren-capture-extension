@@ -154,8 +154,11 @@
 
       if (f.type === 'select') {
         const sel = document.createElement('select');
+        const opts = optionsOf(f.key);
+        // 识别到的值不在飞书选项里时，也加入下拉框（如 Lv5 不在选项中）
+        const extra = (val && !opts.includes(val) && !Array.isArray(val)) ? [val] : [];
         sel.innerHTML = '<option value="">— 未识别 / 请选择 —</option>' +
-          optionsOf(f.key).map((o) => `<option ${o === val ? 'selected' : ''}>${o}</option>`).join('');
+          [...opts, ...extra].map((o) => `<option ${o === val ? 'selected' : ''}>${o}</option>`).join('');
         sel.addEventListener('change', () => { current[f.key] = sel.value || null; edited.add(f.key); render(debug); });
         row.appendChild(sel);
       } else if (f.type === 'chips') {

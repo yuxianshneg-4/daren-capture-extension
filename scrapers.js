@@ -240,8 +240,7 @@
     const avgPriceRaw = valueByLabel('平均件单价', /¥\s*[\d.]+/);
 
     const gmv = matchRange(gmvRaw, getOptions('月GMV'));
-    const lvOptions = getOptions('达人等级');
-    let level = header.level && lvOptions.includes(header.level) ? header.level : 'Lv1'; // 兜底：没识别到等级徽章时默认 Lv1
+    let level = header.level || 'Lv1'; // 识别到等级就用识别到的，不再用飞书选项过滤（避免 Lv5 被误改成 Lv1）；没识别到才兜底 Lv1
 
     const values = {
       达人昵称: header.name,
