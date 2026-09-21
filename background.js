@@ -3,11 +3,12 @@
 
 const HOST = 'https://open.feishu.cn';
 
-// 只允许写入这些列，合作类人工字段不经过接口
+// 只允许写入这些列（面板之外的人工字段不经过接口）
 const ALLOWED_FIELDS = [
   '达人昵称', '平台', '粉丝量', '粉丝量级', '省份', '达人等级', '直播or视频',
   '月GMV', '平均单价', '商品数', '店铺数', '一级类目',
-  '主页链接', '账号ID', '账号详细', '微信号', '建联日期'
+  '主页链接', '账号ID', '账号详细', '微信号', '建联日期',
+  '合作模式', '合作进度', '建联进度'
 ];
 
 async function getConfig() {
@@ -123,7 +124,8 @@ async function sanitizeFields(input) {
 // —— 业务：读取字段选项（给面板渲染下拉框）——
 async function getSchema() {
   const data = await feishu('/open-apis/bitable/v1/apps/{base}/tables/{table}/fields?page_size=100');
-  const needed = ['平台', '粉丝量级', '省份', '达人等级', '月GMV', '一级类目', '直播or视频'];
+  const needed = ['平台', '粉丝量级', '省份', '达人等级', '月GMV', '一级类目', '直播or视频',
+    '合作模式', '合作进度', '建联进度'];
   const fields = (data.items || [])
     .filter((f) => needed.includes(f.field_name))
     .map((f) => ({

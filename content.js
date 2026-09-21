@@ -19,8 +19,14 @@
     { key: '账号ID', label: '抖音号', type: 'text' },
     { key: '微信号', label: '微信号', type: 'text' },
     { key: '主页链接', label: '主页链接', type: 'text' },
-    { key: '账号详细', label: '账号详细(简介)', type: 'text' }
+    { key: '账号详细', label: '账号详细(简介)', type: 'text' },
+    { key: '合作模式', label: '合作模式（默认纯佣）', type: 'select' },
+    { key: '合作进度', label: '合作进度（默认建联中）', type: 'select' },
+    { key: '建联进度', label: '建联进度（有微信=微信号）', type: 'select' }
   ];
+
+  // 只在新建记录时写入的字段：更新已有记录时保留表里原值，避免把已推进的进度重置回默认
+  const CREATE_ONLY_FIELDS = new Set(['合作模式', '合作进度', '建联进度']);
 
   let schema = [];                 // 云函数返回的字段选项
   const edited = new Set();        // 手动改过的字段（不被自动识别覆盖）
@@ -110,11 +116,34 @@
     return v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0);
   }
 
+  // 在飞书该列的实际选项里取匹配项：先精确匹配，再退一步按包含匹配
+  // （排除带“非”的选项，避免把“非纯佣”误当成“纯佣”）
+  function pickOption(key, want) {
+    const opts = optionsOf(key);
+    if (!opts.length) return null; // 列不存在或拉不到选项时不预填，避免写入非法选项报错
+    return opts.find((o) => o === want) || opts.find((o) => o.includes(want) && !o.includes('非')) || null;
+  }
+
+  // 录入默认值：合作模式=纯佣、合作进度=建联中、建联进度=有微信号则“微信号”否则“站内邀约”
+  function applyDefaults() {
+    const rules = [
+      ['合作模式', () => '纯佣'],
+      ['合作进度', () => '建联中'],
+      ['建联进度', () => (current['微信号'] ? '微信号' : '站内邀约')]
+    ];
+    for (const [key, want] of rules) {
+      if (edited.has(key) || !isEmpty(current[key])) continue; // 已识别/已手改的不动
+      const hit = pickOption(key, want());
+      if (hit) current[key] = hit;
+    }
+  }
+
   // 自动识别结果合并：手动改过的不动；抓到新值就更新；
   // 抓不到时，页面专属字段（只在某个标签页出现）保留旧值，头部常显字段清空防残留
   const KEEP_ON_MISSING = new Set([
     '月GMV', '平均单价', '商品数', '店铺数', '一级类目',
-    '账号ID', '微信号', '主页链接', '账号详细', '直播or视频'
+    '账号ID', '微信号', '主页链接', '账号详细', '直播or视频',
+    '合作模式', '合作进度', '建联进度'
   ]);
   function mergeScraped(values) {
     for (const f of FIELDS) {
@@ -133,6 +162,7 @@
     try {
       const { values, debug, mix } = window.__talentScrape(schema);
       mergeScraped(values);
+      applyDefaults(); // 合作模式/合作进度/建联进度：只在没值时预填，已识别或手改过的不动
       if (mix) mixInfo = mix; // 内容数据只在概览页有，抓到过就留着（切走标签页不清空）
       render(debug);
     } catch (e) {
@@ -190,13 +220,20 @@
         inp.addEventListener('input', () => { current[f.key] = inp.value.trim() || null; edited.add(f.key); });
         row.appendChild(inp);
       }
+      // 字段下方的浅灰说明行
+      const addHint = (text) => {
+        const h = document.createElement('div');
+        h.className = 'hint';
+        h.textContent = text;
+        row.appendChild(h);
+      };
       // 内容方向：把判断依据（各项内容数）显示在下方，方便人工核对
       if (f.key === '直播or视频' && mixInfo) {
         const n = (x) => (x == null ? '-' : x);
-        const hint = document.createElement('div');
-        hint.className = 'hint';
-        hint.textContent = `依据：总数${n(mixInfo.total)}条｜直播${n(mixInfo.live)}个｜视频${n(mixInfo.video)}个｜图文${n(mixInfo.image)}个（按内容数判断）`;
-        row.appendChild(hint);
+        addHint(`依据：总数${n(mixInfo.total)}条｜直播${n(mixInfo.live)}个｜视频${n(mixInfo.video)}个｜图文${n(mixInfo.image)}个（按内容数判断）`);
+      }
+      if (f.key === '合作模式') {
+        addHint('这三项仅在「新建记录」时写入；更新已有记录时保留表里原值');
       }
       cnt.appendChild(row);
     }
@@ -214,9 +251,11 @@
   }
 
   // ---------- 提交 ----------
-  function buildPayload() {
+  // isCreate=true 时带上合作模式/合作进度/建联进度；更新已有记录时跳过，保留表里原值
+  function buildPayload(isCreate) {
     const fields = { 建联日期: Date.now() };
     for (const f of FIELDS) {
+      if (!isCreate && CREATE_ONLY_FIELDS.has(f.key)) continue;
       const v = current[f.key];
       if (isEmpty(v)) continue;
       if (f.type === 'number') fields[f.key] = Number(v);
@@ -252,14 +291,14 @@
         const resp = await chrome.runtime.sendMessage({
           type: 'TALENT',
           payload: choice === 'update'
-            ? { action: 'update', recordId: dup.recordId, fields: buildPayload() }
-            : { action: 'create', fields: buildPayload() }
+            ? { action: 'update', recordId: dup.recordId, fields: buildPayload(false) }
+            : { action: 'create', fields: buildPayload(true) }
         });
         if (!resp.ok) throw new Error(resp.error || '写入失败');
         toast(choice === 'update' ? '✓ 已更新该达人记录' : '✓ 已新建记录');
       } else {
         const resp = await chrome.runtime.sendMessage({
-          type: 'TALENT', payload: { action: 'create', fields: buildPayload() }
+          type: 'TALENT', payload: { action: 'create', fields: buildPayload(true) }
         });
         if (!resp.ok) throw new Error(resp.error || '写入失败');
         toast('✓ 录入成功');
