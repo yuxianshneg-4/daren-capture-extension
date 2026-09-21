@@ -8,7 +8,7 @@ const ALLOWED_FIELDS = [
   '达人昵称', '平台', '粉丝量', '粉丝量级', '省份', '达人等级', '直播or视频',
   '月GMV', '平均单价', '商品数', '店铺数', '一级类目',
   '主页链接', '账号ID', '账号详细', '微信号', '建联日期',
-  '合作模式', '合作进度', '建联进度'
+  '合作模式', '合作进度', '建联进度', '登记人'
 ];
 
 async function getConfig() {
@@ -105,8 +105,40 @@ function coerceValue(type, key, v) {
   }
 }
 
+// —— 人员列（type 11）写入要的是 open_id，而配置里填的是显示名 ——
+// 从表里已有记录反查"显示名 → open_id"（人员字段的值形如 [{id:'ou_xxx', name:'张三'}]），
+// 这样不用给飞书应用额外开通讯录权限
+let userMapCache = null;
+
+async function scanUserMap(name) {
+  if (userMapCache && userMapCache.has(name)) return userMapCache.get(name);
+  if (!userMapCache) userMapCache = new Map();
+  let pageToken = '';
+  for (let page = 0; page < 5; page++) { // 最多翻 1000 条记录
+    const path = '/open-apis/bitable/v1/apps/{base}/tables/{table}/records?page_size=200' +
+      (pageToken ? `&page_token=${pageToken}` : '');
+    const data = await feishu(path);
+    for (const it of (data.items || [])) {
+      for (const v of Object.values(it.fields || {})) {
+        if (!Array.isArray(v)) continue;
+        for (const u of v) {
+          if (u && typeof u === 'object' && u.id && u.name) userMapCache.set(String(u.name), String(u.id));
+        }
+      }
+    }
+    if (userMapCache.has(name)) return userMapCache.get(name);
+    if (!data.has_more || !data.page_token) break;
+    pageToken = data.page_token;
+  }
+  for (const [n, id] of userMapCache) { // 兜底：显示名带前缀/后缀时按包含匹配
+    if (n.includes(name) || name.includes(n)) return id;
+  }
+  return null;
+}
+
 async function sanitizeFields(input) {
   const out = {};
+  const warnings = [];
   let types = null;
   try {
     types = await getFieldTypes();
@@ -115,10 +147,18 @@ async function sanitizeFields(input) {
     const v = input[key];
     if (v === undefined || v === null || v === '') continue;
     if (types && types[key] === undefined) continue; // 表里没这列（如新列还没建）就跳过，避免写入报错
-    const coerced = types ? coerceValue(types[key], key, v) : v;
+    const type = types ? types[key] : undefined;
+    if (type === 11) { // 人员列：按显示名反查 open_id，查不到就不写这一列（不影响其他列）
+      let id = null;
+      try { id = await scanUserMap(String(v)); } catch (e) { /* 反查失败按未匹配处理 */ }
+      if (id) out[key] = [{ id }];
+      else warnings.push(`「${key}」没在表里找到成员「${v}」`);
+      continue;
+    }
+    const coerced = types ? coerceValue(type, key, v) : v;
     if (coerced !== undefined && coerced !== '') out[key] = coerced;
   }
-  return out;
+  return { fields: out, warnings };
 }
 
 // —— 业务：读取字段选项（给面板渲染下拉框）——
@@ -159,23 +199,23 @@ async function talent(payload) {
   }
 
   if (action === 'create') {
-    const fields = await sanitizeFields(payload.fields || {});
+    const { fields, warnings } = await sanitizeFields(payload.fields || {});
     if (!fields['达人昵称']) throw new Error('达人昵称为空');
     const data = await feishu('/open-apis/bitable/v1/apps/{base}/tables/{table}/records', {
       method: 'POST',
       body: { fields }
     });
-    return { ok: true, recordId: data.record.record_id };
+    return { ok: true, recordId: data.record.record_id, warnings };
   }
 
   if (action === 'update') {
     if (!payload.recordId) throw new Error('缺少 recordId');
-    const fields = await sanitizeFields(payload.fields || {});
+    const { fields, warnings } = await sanitizeFields(payload.fields || {});
     await feishu(`/open-apis/bitable/v1/apps/{base}/tables/{table}/records/${payload.recordId}`, {
       method: 'PUT',
       body: { fields }
     });
-    return { ok: true, recordId: payload.recordId };
+    return { ok: true, recordId: payload.recordId, warnings };
   }
 
   throw new Error(`未知 action：${action}`);

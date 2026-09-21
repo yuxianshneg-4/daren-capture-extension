@@ -5,11 +5,12 @@ const DEFAULT_BASE = 'GlClbxoywa1LDXsGGnccQZ6inGb';
 const DEFAULT_TABLE = 'tblUxwg61laLleZh';
 
 async function init() {
-  const cfg = await chrome.storage.sync.get(['appId', 'appSecret', 'baseToken', 'tableId']);
+  const cfg = await chrome.storage.sync.get(['appId', 'appSecret', 'baseToken', 'tableId', 'defaultRegistrar']);
   $('appId').value = cfg.appId || '';
   $('appSecret').value = cfg.appSecret || '';
   $('baseToken').value = cfg.baseToken || DEFAULT_BASE;
   $('tableId').value = cfg.tableId || DEFAULT_TABLE;
+  $('defaultRegistrar').value = cfg.defaultRegistrar || '';
 }
 
 $('save').addEventListener('click', async () => {
@@ -17,6 +18,7 @@ $('save').addEventListener('click', async () => {
   const appSecret = $('appSecret').value.trim();
   const baseToken = $('baseToken').value.trim();
   const tableId = $('tableId').value.trim();
+  const defaultRegistrar = $('defaultRegistrar').value.trim();
   const status = $('status');
   status.style.color = '#8f959e';
   status.textContent = '保存中...';
@@ -27,7 +29,7 @@ $('save').addEventListener('click', async () => {
     return;
   }
 
-  await chrome.storage.sync.set({ appId, appSecret, baseToken, tableId });
+  await chrome.storage.sync.set({ appId, appSecret, baseToken, tableId, defaultRegistrar });
 
   // 测试连接：清掉旧 token 缓存后请求 schema
   await chrome.storage.local.remove('tokenCache');

@@ -22,16 +22,18 @@
     { key: '账号详细', label: '账号详细(简介)', type: 'text' },
     { key: '合作模式', label: '合作模式（默认纯佣）', type: 'select' },
     { key: '合作进度', label: '合作进度（默认建联中）', type: 'select' },
-    { key: '建联进度', label: '建联进度（有微信=微信号）', type: 'select' }
+    { key: '建联进度', label: '建联进度（有微信=微信号）', type: 'select' },
+    { key: '登记人', label: '登记人', type: 'text' }
   ];
 
-  // 只在新建记录时写入的字段：更新已有记录时保留表里原值，避免把已推进的进度重置回默认
-  const CREATE_ONLY_FIELDS = new Set(['合作模式', '合作进度', '建联进度']);
+  // 只在新建记录时写入的字段：更新已有记录时保留表里原值，避免把已推进的进度/归属改掉
+  const CREATE_ONLY_FIELDS = new Set(['合作模式', '合作进度', '建联进度', '登记人']);
 
   let schema = [];                 // 云函数返回的字段选项
   const edited = new Set();        // 手动改过的字段（不被自动识别覆盖）
   let current = {};                // 当前值
   let mixInfo = null;              // 内容数据明细（直播/视频/图文各多少条），仅用于面板提示
+  let settingRegistrar = '';       // 配置页填的默认登记人显示名（人员列写入时由后台反查成 open_id）
   let lastUrl = location.href;
   let armed = false;               // 两段式按钮：false=待捕获，true=已捕获待确认录入
   const SHOW_DEBUG = false;        // 调试行默认隐藏；需要排查问题时改成 true 再刷新页面
@@ -79,7 +81,8 @@
       .warn { background:#fff7e8; color:#d46b08; font-size:11px; padding:6px 8px; border-radius:6px; margin-bottom:8px; }
       .dbg { font-size:10px; color:#8f959e; margin-top:6px; word-break:break-all; }
       .toast { position:fixed; top:16px; left:50%; transform:translateX(-50%); background:#1f2329; color:#fff;
-        padding:8px 18px; border-radius:8px; font-size:13px; z-index:9999; opacity:0; transition:opacity .2s; }
+        padding:8px 18px; border-radius:8px; font-size:13px; z-index:9999; opacity:0; transition:opacity .2s;
+        max-width:80vw; text-align:center; line-height:1.6; white-space:pre-line; }
       .toast.show { opacity:.95; }
       .modal-mask { position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; z-index:9998; }
       .modal { background:#fff; border-radius:12px; padding:18px; width:340px; box-shadow:0 10px 40px rgba(0,0,0,.2); }
@@ -125,6 +128,7 @@
   }
 
   // 录入默认值：合作模式=纯佣、合作进度=建联中、建联进度=有微信号则“微信号”否则“站内邀约”
+  // 登记人取配置页填的显示名（人员列，写入时由后台反查 open_id）
   function applyDefaults() {
     const rules = [
       ['合作模式', () => '纯佣'],
@@ -136,6 +140,9 @@
       const hit = pickOption(key, want());
       if (hit) current[key] = hit;
     }
+    if (settingRegistrar && !edited.has('登记人') && isEmpty(current['登记人'])) {
+      current['登记人'] = settingRegistrar;
+    }
   }
 
   // 自动识别结果合并：手动改过的不动；抓到新值就更新；
@@ -143,7 +150,7 @@
   const KEEP_ON_MISSING = new Set([
     '月GMV', '平均单价', '商品数', '店铺数', '一级类目',
     '账号ID', '微信号', '主页链接', '账号详细', '直播or视频',
-    '合作模式', '合作进度', '建联进度'
+    '合作模式', '合作进度', '建联进度', '登记人'
   ]);
   function mergeScraped(values) {
     for (const f of FIELDS) {
@@ -233,7 +240,12 @@
         addHint(`依据：总数${n(mixInfo.total)}条｜直播${n(mixInfo.live)}个｜视频${n(mixInfo.video)}个｜图文${n(mixInfo.image)}个（按内容数判断）`);
       }
       if (f.key === '合作模式') {
-        addHint('这三项仅在「新建记录」时写入；更新已有记录时保留表里原值');
+        addHint('合作模式/合作进度/建联进度/登记人 仅在「新建记录」时写入；更新已有记录时保留表里原值');
+      }
+      if (f.key === '登记人') {
+        addHint(settingRegistrar
+          ? '默认取配置页填的「' + settingRegistrar + '」，写入时自动匹配成飞书成员'
+          : '未配置默认登记人：右键扩展图标 → 选项 里填「默认登记人」（写你的飞书显示名）');
       }
       cnt.appendChild(row);
     }
@@ -295,13 +307,13 @@
             : { action: 'create', fields: buildPayload(true) }
         });
         if (!resp.ok) throw new Error(resp.error || '写入失败');
-        toast(choice === 'update' ? '✓ 已更新该达人记录' : '✓ 已新建记录');
+        toastResult(choice === 'update' ? '✓ 已更新该达人记录' : '✓ 已新建记录', resp);
       } else {
         const resp = await chrome.runtime.sendMessage({
           type: 'TALENT', payload: { action: 'create', fields: buildPayload(true) }
         });
         if (!resp.ok) throw new Error(resp.error || '写入失败');
-        toast('✓ 录入成功');
+        toastResult('✓ 录入成功', resp);
       }
       armed = false; // 提交成功，回到待捕获状态
     } catch (e) {
@@ -336,12 +348,19 @@
   }
 
   let toastTimer;
-  function toast(msg) {
+  function toast(msg, ms) {
     const el = shadow.getElementById('toast');
     el.textContent = msg;
     el.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+    toastTimer = setTimeout(() => el.classList.remove('show'), ms || 2600);
+  }
+
+  // 写入成功但有列没写进去（如人员列没在表里找到该成员）时，把原因一并提示出来
+  function toastResult(msg, resp) {
+    const warns = (resp && resp.warnings) || [];
+    if (warns.length) toast(msg + '\n' + warns.join('\n'), 6000);
+    else toast(msg);
   }
 
   // ---------- 通用：拖拽 + 位置持久化 + 四边缩边 ----------
@@ -689,6 +708,10 @@
   // ---------- 启动 ----------
   (async function init() {
     render();
+    try {
+      const cfg = await chrome.storage.sync.get(['defaultRegistrar']);
+      settingRegistrar = (cfg.defaultRegistrar || '').trim();
+    } catch (e) { /* 读不到配置就不预填登记人 */ }
     const resp = await chrome.runtime.sendMessage({ type: 'SCHEMA' });
     if (resp && resp.ok) {
       schema = resp.fields;
