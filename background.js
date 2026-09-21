@@ -5,7 +5,7 @@ const HOST = 'https://open.feishu.cn';
 
 // 只允许写入这些列，合作类人工字段不经过接口
 const ALLOWED_FIELDS = [
-  '达人昵称', '平台', '粉丝量', '粉丝量级', '省份', '达人等级',
+  '达人昵称', '平台', '粉丝量', '粉丝量级', '省份', '达人等级', '直播or视频',
   '月GMV', '平均单价', '商品数', '店铺数', '一级类目',
   '主页链接', '账号ID', '账号详细', '微信号', '建联日期'
 ];
@@ -106,15 +106,15 @@ function coerceValue(type, key, v) {
 
 async function sanitizeFields(input) {
   const out = {};
-  let types = {};
+  let types = null;
   try {
     types = await getFieldTypes();
   } catch (e) { /* 拉不到列类型时按原值写入，行为与旧版一致 */ }
   for (const key of ALLOWED_FIELDS) {
     const v = input[key];
     if (v === undefined || v === null || v === '') continue;
-    const type = types[key];
-    const coerced = type ? coerceValue(type, key, v) : v;
+    if (types && types[key] === undefined) continue; // 表里没这列（如新列还没建）就跳过，避免写入报错
+    const coerced = types ? coerceValue(types[key], key, v) : v;
     if (coerced !== undefined && coerced !== '') out[key] = coerced;
   }
   return out;
@@ -123,7 +123,7 @@ async function sanitizeFields(input) {
 // —— 业务：读取字段选项（给面板渲染下拉框）——
 async function getSchema() {
   const data = await feishu('/open-apis/bitable/v1/apps/{base}/tables/{table}/fields?page_size=100');
-  const needed = ['平台', '粉丝量级', '省份', '达人等级', '月GMV', '一级类目'];
+  const needed = ['平台', '粉丝量级', '省份', '达人等级', '月GMV', '一级类目', '直播or视频'];
   const fields = (data.items || [])
     .filter((f) => needed.includes(f.field_name))
     .map((f) => ({

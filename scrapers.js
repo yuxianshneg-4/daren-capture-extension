@@ -202,6 +202,51 @@
     return topCategories().filter((n) => options.includes(n));
   }
 
+  // ---------- 内容数据：发布内容总数 + 直播/视频/图文的内容数 ----------
+  // “内容数据”卡片：从“发布内容总数”锚点向外扩，取同时含“直播N个”和“视频N个”的最小容器文本
+  function contentMixScope() {
+    const anchor = findTextNode(/发布内容总数/);
+    if (!anchor) return null;
+    let scope = anchor;
+    for (let i = 0; i < 8 && scope.parentElement; i++) {
+      scope = scope.parentElement;
+      const t = (scope.innerText || '').replace(/\s+/g, ' ');
+      if (/直播\s*\d{1,7}\s*个/.test(t) && /视频\s*\d{1,7}\s*个/.test(t)) return t;
+    }
+    return null; // 找不到卡片就不猜，宁可留空
+  }
+
+  function countByLabel(text, label) {
+    if (!text) return null;
+    const a = text.match(new RegExp(label + '\\s*(\\d{1,7})\\s*个'));
+    if (a) return parseInt(a[1], 10);
+    const b = text.match(new RegExp('(\\d{1,7})\\s*个[^\\d]{0,4}' + label)); // 兼容“N个 标签”的排布
+    return b ? parseInt(b[1], 10) : null;
+  }
+
+  // 发布内容总数：页面是“61 发布内容总数”（值在标签前）
+  function totalByLabel(text) {
+    if (!text) return null;
+    const a = text.match(/(\d{1,7})\s*发布内容总数/);
+    if (a) return parseInt(a[1], 10);
+    const b = text.match(/发布内容总数\s*(\d{1,7})/);
+    return b ? parseInt(b[1], 10) : null;
+  }
+
+  // 内容方向：只看内容篇数，不看播放量；数量多的一方胜出，相同则优先“综合”>“视频”
+  // 返回值必须落在飞书该列的实际选项里，否则留空（避免单选列写入非法选项报错）
+  function deriveContentDirection(mix, options) {
+    if (!mix) return null;
+    const l = mix.live || 0;
+    const v = mix.video || 0;
+    if (l === 0 && v === 0) return null; // 既没直播也没视频内容，留空由人工判断
+    const cands = v > l ? ['视频', '直播'] : (l > v ? ['直播', '视频'] : ['综合', '视频', '直播']);
+    const opts = options || [];
+    if (!opts.length) return cands.includes('综合') ? '视频' : cands[0]; // 拉不到飞书选项时的兜底
+    for (const c of cands) if (opts.includes(c)) return c;
+    return null;
+  }
+
   // ---------- 主入口 ----------
 
   function scrape(schema) {
@@ -221,10 +266,20 @@
     const gmv = matchRange(gmvRaw, getOptions('月GMV'));
     let level = header.level || 'Lv1'; // 识别到等级就用识别到的，不再用飞书选项过滤（避免 Lv5 被误改成 Lv1）；没识别到才兜底 Lv1
 
+    // 内容数据（只有概览页有）：直播/视频/图文各多少条，用来判断内容方向
+    const mixText = contentMixScope();
+    const contentMix = mixText ? {
+      total: totalByLabel(mixText),
+      live: countByLabel(mixText, '直播'),
+      video: countByLabel(mixText, '视频'),
+      image: countByLabel(mixText, '图文')
+    } : null;
+
     const values = {
       达人昵称: header.name,
       平台: getOptions('平台').includes('抖音') ? '抖音' : null,
       达人等级: level,
+      直播or视频: deriveContentDirection(contentMix, getOptions('直播or视频')),
       粉丝量: fans,
       粉丝量级: fans != null ? deriveFanLevel(fans, getOptions('粉丝量级')) : null,
       省份: header.region,
@@ -239,13 +294,13 @@
       微信号: scrapeWechat()
     };
 
-    const debug = { bodyLen: 0, sample: '', gmvRaw, goodsCount, shopCount, avgPriceRaw };
+    const debug = { bodyLen: 0, sample: '', gmvRaw, goodsCount, shopCount, avgPriceRaw, contentMix };
     try {
       const bt = bodyText();
       debug.bodyLen = bt.length;
       debug.sample = bt.replace(/\s+/g, ' ').slice(0, 150);
     } catch (e) { /* 调试信息不影响主流程 */ }
-    return { values, debug };
+    return { values, debug, mix: contentMix };
   }
 
   window.__talentScrape = scrape;

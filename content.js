@@ -10,6 +10,7 @@
     { key: '粉丝量级', label: '粉丝量级', type: 'select' },
     { key: '省份', label: '省份', type: 'select' },
     { key: '达人等级', label: '达人等级', type: 'select' },
+    { key: '直播or视频', label: '直播or视频(内容方向)', type: 'select' },
     { key: '月GMV', label: '月GMV', type: 'select' },
     { key: '平均单价', label: '平均单价(元)', type: 'text' },
     { key: '商品数', label: '商品数', type: 'number' },
@@ -24,6 +25,7 @@
   let schema = [];                 // 云函数返回的字段选项
   const edited = new Set();        // 手动改过的字段（不被自动识别覆盖）
   let current = {};                // 当前值
+  let mixInfo = null;              // 内容数据明细（直播/视频/图文各多少条），仅用于面板提示
   let lastUrl = location.href;
   let armed = false;               // 两段式按钮：false=待捕获，true=已捕获待确认录入
   const SHOW_DEBUG = false;        // 调试行默认隐藏；需要排查问题时改成 true 再刷新页面
@@ -61,6 +63,7 @@
       .chips { display:flex; flex-wrap:wrap; gap:4px; }
       .chip { padding:2px 8px; border:1px solid #d0d3d6; border-radius:10px; font-size:11px; cursor:pointer; background:#f7f8fa; }
       .chip.on { background:#e1eaff; border-color:#3370ff; color:#245bdb; }
+      .hint { font-size:10px; color:#8f959e; margin-top:3px; line-height:1.5; }
       .bar { display:flex; gap:8px; padding:10px 12px; border-top:1px solid #f0f1f2; }
       button { padding:7px 0; flex:1; border:none; border-radius:6px; cursor:pointer; font-size:13px; }
       .btn-primary { background:#3370ff; color:#fff; }
@@ -111,7 +114,7 @@
   // 抓不到时，页面专属字段（只在某个标签页出现）保留旧值，头部常显字段清空防残留
   const KEEP_ON_MISSING = new Set([
     '月GMV', '平均单价', '商品数', '店铺数', '一级类目',
-    '账号ID', '微信号', '主页链接', '账号详细'
+    '账号ID', '微信号', '主页链接', '账号详细', '直播or视频'
   ]);
   function mergeScraped(values) {
     for (const f of FIELDS) {
@@ -128,8 +131,9 @@
   function runScan() {
     if (typeof window.__talentScrape !== 'function') return;
     try {
-      const { values, debug } = window.__talentScrape(schema);
+      const { values, debug, mix } = window.__talentScrape(schema);
       mergeScraped(values);
+      if (mix) mixInfo = mix; // 内容数据只在概览页有，抓到过就留着（切走标签页不清空）
       render(debug);
     } catch (e) {
       toast('识别出错：' + e.message);
@@ -185,6 +189,14 @@
         inp.placeholder = f.required ? '必填' : '';
         inp.addEventListener('input', () => { current[f.key] = inp.value.trim() || null; edited.add(f.key); });
         row.appendChild(inp);
+      }
+      // 内容方向：把判断依据（各项内容数）显示在下方，方便人工核对
+      if (f.key === '直播or视频' && mixInfo) {
+        const n = (x) => (x == null ? '-' : x);
+        const hint = document.createElement('div');
+        hint.className = 'hint';
+        hint.textContent = `依据：总数${n(mixInfo.total)}条｜直播${n(mixInfo.live)}个｜视频${n(mixInfo.video)}个｜图文${n(mixInfo.image)}个（按内容数判断）`;
+        row.appendChild(hint);
       }
       cnt.appendChild(row);
     }
@@ -625,6 +637,7 @@
       lastUrl = location.href;
       edited.clear();
       current = {};
+      mixInfo = null;
       armed = false;
       const btn = $('#submit');
       btn.disabled = false;
